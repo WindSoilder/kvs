@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::fs::{File, OpenOptions};
-use std::io::{BufRead, BufReader, Seek, SeekFrom, Write};
+use std::io::{BufRead, BufReader, Read, Seek, SeekFrom, Write};
 use std::path::Path;
 
 use crate::command::{Command, Instruction};
@@ -8,7 +8,6 @@ use crate::error::{KvsError, Result};
 
 pub struct KvStore {
     db_file: File,
-    map: HashMap<String, String>,
 }
 
 impl KvStore {
@@ -58,17 +57,48 @@ impl KvStore {
         let mut file_work: File = self.db_file.try_clone()?;
         // re-seek file and build from store.
         file_work.seek(SeekFrom::Start(0))?;
-        let buffer: BufReader<File> = BufReader::new(file_work);
-        let mut map: HashMap<String, String> = HashMap::new();
+        let mut buffer: BufReader<File> = BufReader::new(file_work);
+        let mut map: HashMap<String, u64> = HashMap::new();
 
-        for line in buffer.lines() {
-            if let Ok(line_content) = line {
-                let instruction: Instruction = serde_json::from_str(&line_content)?;
-                instruction.play(&mut map);
+        self.build_indx(&mut buffer, &mut map)?;
+
+        // check if key exists in inner map and if the relative command is set.
+        if let Some(position) = map.get(&key) {
+            buffer.seek(SeekFrom::Start(*position))?;
+            let mut line_content: String = String::new();
+            buffer.read_line(&mut line_content)?;
+            let instruction: Instruction = serde_json::from_str(&line_content)?;
+            match instruction.get_command() {
+                Command::Rm { key: _key } => {
+                    return Ok(None);
+                }
+                Command::Set { key: _key, value } => return Ok(Some(value.clone())),
+                _ => {}
             }
         }
-        // check if key exists in inner map.
-        Ok(map.get(&key).cloned())
+        Ok(None)
+    }
+
+    fn build_indx<T>(
+        self: &KvStore,
+        buffer: &mut BufReader<T>,
+        map: &mut HashMap<String, u64>,
+    ) -> Result<()>
+    where
+        T: Read + Seek,
+    {
+        loop {
+            let position_before: u64 = buffer.seek(SeekFrom::Current(0))?;
+            let mut line_content: String = String::new();
+            buffer.read_line(&mut line_content)?;
+            // Command is end.
+            if line_content.is_empty() {
+                break;
+            }
+            let instruction: Instruction = serde_json::from_str(&line_content)?;
+            instruction.play(map, position_before)
+        }
+        Ok(())
     }
 
     /// Remove a given key. Return an error if the key does not exist or is not removed successfully.
@@ -87,29 +117,36 @@ impl KvStore {
         // load commands and play with it to build internal store.
         let mut file_work: File = self.db_file.try_clone()?;
         file_work.seek(SeekFrom::Start(0))?;
-        let buffer: BufReader<File> = BufReader::new(file_work);
+        let mut buffer: BufReader<File> = BufReader::new(file_work);
+        let mut map: HashMap<String, u64> = HashMap::new();
 
-        for line in buffer.lines() {
-            if let Ok(line_content) = line {
-                let instruction: Instruction = serde_json::from_str(&line_content)?;
-                instruction.play(&mut self.map);
+        self.build_indx(&mut buffer, &mut map)?;
+
+        if let Some(position) = map.get(&key) {
+            buffer.seek(SeekFrom::Start(*position))?;
+            let mut line_content: String = String::new();
+            buffer.read_line(&mut line_content)?;
+            let instruction: Instruction = serde_json::from_str(&line_content)?;
+            match instruction.get_command() {
+                Command::Rm { key: _key } => {
+                    return Err(KvsError::from_string("Key not found"));
+                }
+                Command::Set {
+                    key: _key,
+                    value: _value,
+                } => {
+                    // the key exists, so it's ok to append a remove command to end of log file.
+                    self.db_file.seek(SeekFrom::End(0))?;
+                    let instruction: Instruction = Instruction::new(Command::Rm { key });
+                    let inst_str: String = serde_json::to_string(&instruction)?;
+                    self.db_file
+                        .write_all(format!("{}\n", inst_str).as_bytes())?;
+                    return Ok(())
+                }
+                _ => {}
             }
         }
-
-        let remove_result: Option<String> = self.map.remove(&key);
-        if remove_result.is_none() {
-            return Err(KvsError::from_string("key not found"));
-        }
-        // construct a remove command and append to log.
-        let command: Command = Command::Rm { key };
-        let instruction: Instruction = Instruction::new(command);
-        let instruction_str: String = serde_json::to_string(&instruction)?;
-        self.db_file
-            .write_all(format!("{}\n", instruction_str).as_bytes())?;
-
-        // do actual remove action.
-        instruction.play(&mut self.map);
-        Ok(())
+        Err(KvsError::from_string("Key not found"))
     }
 
     /// Open the local kvs store from given file.
@@ -122,9 +159,6 @@ impl KvStore {
             .read(true)
             .write(true)
             .open(full_path)?;
-        Ok(KvStore {
-            db_file,
-            map: HashMap::new(),
-        })
+        Ok(KvStore { db_file })
     }
 }

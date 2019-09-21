@@ -22,15 +22,19 @@ impl Instruction {
     /// play my instruction under the given store.
     ///
     /// which may affect the store.
-    pub fn play(&self, store: &mut HashMap<String, String>) {
+    pub fn play(&self, store: &mut HashMap<String, u64>, position: u64) {
         match &self.command {
-            Command::Set { key, value } => {
-                store.insert(key.clone(), value.clone());
+            Command::Set { key, value: _value } => {
+                store.insert(key.clone(), position);
             }
             Command::Rm { key } => {
                 store.remove(key);
             }
             _ => {} // for get, do nothing
         };
+    }
+
+    pub fn get_command(&self) -> &Command {
+        &self.command
     }
 }
