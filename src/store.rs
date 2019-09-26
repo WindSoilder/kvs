@@ -8,6 +8,7 @@ use crate::error::{KvsError, Result};
 
 pub struct KvStore {
     db_file: File,
+    index: HashMap<String, u64>,
 }
 
 impl KvStore {
@@ -25,11 +26,16 @@ impl KvStore {
     ///
     pub fn set(self: &mut KvStore, key: String, val: String) -> Result<()> {
         // create a relative instruction object.
-        let command: Command = Command::Set { key, value: val };
+        let command: Command = Command::Set {
+            key: key.clone(),
+            value: val,
+        };
         let instruction: Instruction = Instruction::new(command);
         let inst_str: String = serde_json::ser::to_string(&instruction)?;
         // just write serialized data into file
-        self.db_file.seek(SeekFrom::End(0))?;
+        let offset: u64 = self.db_file.seek(SeekFrom::End(0))?;
+        // write the current offset to inner index.
+        self.index.insert(key, offset);
         self.db_file
             .write_all(format!("{}\n", inst_str).as_bytes())?;
         Ok(())
@@ -54,39 +60,28 @@ impl KvStore {
     /// assert_eq!(store.get("name".to_owned()).is_none(), true);
     /// ```
     pub fn get(self: &KvStore, key: String) -> Result<Option<String>> {
-        let mut file_work: File = self.db_file.try_clone()?;
-        // re-seek file and build from store.
-        file_work.seek(SeekFrom::Start(0))?;
-        let mut buffer: BufReader<File> = BufReader::new(file_work);
-        let mut map: HashMap<String, u64> = HashMap::new();
-
-        self.build_indx(&mut buffer, &mut map)?;
-
-        // check if key exists in inner map and if the relative command is set.
-        if let Some(position) = map.get(&key) {
-            buffer.seek(SeekFrom::Start(*position))?;
-            let mut line_content: String = String::new();
-            buffer.read_line(&mut line_content)?;
-            let instruction: Instruction = serde_json::from_str(&line_content)?;
-            match instruction.get_command() {
-                Command::Rm { key: _key } => {
-                    return Ok(None);
-                }
-                Command::Set { key: _key, value } => return Ok(Some(value.clone())),
-                _ => {}
-            }
+        if !self.index.contains_key(&key) {
+            return Ok(None);
         }
-        Ok(None)
+        // access the key to get relative file pointer index.
+        let file: File = self.db_file.try_clone()?;
+        let mut reader: BufReader<File> = BufReader::new(file);
+
+        // load command from file and run it.
+        let pointer = self.index.get(&key).unwrap();
+        reader.seek(SeekFrom::Start(*pointer))?;
+        let mut buf: String = String::new();
+        reader.read_line(&mut buf)?;
+        let instruction: Instruction = serde_json::from_str(&buf)?;
+        match instruction.get_command() {
+            Command::Set { key: _key, value } => Ok(Some(value.clone())),
+            _ => Ok(None),
+        }
     }
 
-    fn build_indx<T>(
-        self: &KvStore,
-        buffer: &mut BufReader<T>,
-        map: &mut HashMap<String, u64>,
-    ) -> Result<()>
-    where
-        T: Read + Seek,
+    fn build_indx(self: &mut KvStore) -> Result<()>
     {
+        let mut buffer: BufReader<File> = BufReader::new(self.db_file.try_clone()?);
         loop {
             let position_before: u64 = buffer.seek(SeekFrom::Current(0))?;
             let mut line_content: String = String::new();
@@ -96,7 +91,7 @@ impl KvStore {
                 break;
             }
             let instruction: Instruction = serde_json::from_str(&line_content)?;
-            instruction.play(map, position_before)
+            instruction.play(&mut self.index, position_before)
         }
         Ok(())
     }
@@ -114,39 +109,20 @@ impl KvStore {
     /// assert_eq!(store.get("name".to_owned()).is_none(), true);
     /// ```
     pub fn remove(self: &mut KvStore, key: String) -> Result<()> {
-        // load commands and play with it to build internal store.
-        let mut file_work: File = self.db_file.try_clone()?;
-        file_work.seek(SeekFrom::Start(0))?;
-        let mut buffer: BufReader<File> = BufReader::new(file_work);
-        let mut map: HashMap<String, u64> = HashMap::new();
-
-        self.build_indx(&mut buffer, &mut map)?;
-
-        if let Some(position) = map.get(&key) {
-            buffer.seek(SeekFrom::Start(*position))?;
-            let mut line_content: String = String::new();
-            buffer.read_line(&mut line_content)?;
-            let instruction: Instruction = serde_json::from_str(&line_content)?;
-            match instruction.get_command() {
-                Command::Rm { key: _key } => {
-                    return Err(KvsError::from_string("Key not found"));
-                }
-                Command::Set {
-                    key: _key,
-                    value: _value,
-                } => {
-                    // the key exists, so it's ok to append a remove command to end of log file.
-                    self.db_file.seek(SeekFrom::End(0))?;
-                    let instruction: Instruction = Instruction::new(Command::Rm { key });
-                    let inst_str: String = serde_json::to_string(&instruction)?;
-                    self.db_file
-                        .write_all(format!("{}\n", inst_str).as_bytes())?;
-                    return Ok(())
-                }
-                _ => {}
-            }
+        // check key exists.
+        if !self.index.contains_key(&key) {
+            return Err(KvsError::from_string("Key not found"));
         }
-        Err(KvsError::from_string("Key not found"))
+        // Remember to remove key from inner index.
+        self.index.remove(&key);
+        // The key exists, so it's ok to append a remove command to end of log file.
+        let mut file_work: File = self.db_file.try_clone()?;
+        file_work.seek(SeekFrom::End(0))?;
+        let instruction: Instruction = Instruction::new(Command::Rm { key });
+        let inst_str = serde_json::to_string(&instruction)?;
+        self.db_file
+            .write_all(format!("{}\n", inst_str).as_bytes())?;
+        Ok(())
     }
 
     /// Open the local kvs store from given file.
@@ -159,6 +135,12 @@ impl KvStore {
             .read(true)
             .write(true)
             .open(full_path)?;
-        Ok(KvStore { db_file })
+
+        let mut store: KvStore = KvStore {
+            db_file,
+            index: HashMap::new(),
+        };
+        store.build_indx()?;
+        Ok(store)
     }
 }
