@@ -1,29 +1,21 @@
+use std::fs;
 use std::collections::HashMap;
 use std::fs::{File, OpenOptions};
-use std::io::{BufRead, BufReader, Read, Seek, SeekFrom, Write};
-use std::path::Path;
+use std::io::{BufRead, BufReader, Seek, SeekFrom, Write, BufWriter};
+use std::path::{Path, PathBuf};
+use std::ops::Drop;
 
 use crate::command::{Command, Instruction};
 use crate::error::{KvsError, Result};
 
 pub struct KvStore {
     db_file: File,
+    folder_path: PathBuf,
     index: HashMap<String, u64>,
 }
 
 impl KvStore {
     /// Set the value of a string key to a string. Return an error if the value is not written successfully.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use kvs::KvStore;
-    ///
-    /// let mut store: KvStore = KvStore::new();
-    /// store.set("name".to_owned(), "zero".to_owned());
-    /// assert_eq!(store.get("name".to_owned()), Some("zero".to_owned()));
-    /// ```
-    ///
     pub fn set(self: &mut KvStore, key: String, val: String) -> Result<()> {
         // create a relative instruction object.
         let command: Command = Command::Set {
@@ -38,27 +30,11 @@ impl KvStore {
         self.index.insert(key, offset);
         self.db_file
             .write_all(format!("{}\n", inst_str).as_bytes())?;
+        self.do_compaction()?;
         Ok(())
     }
 
     /// Get the string value of a string key. If the key does not exist, return None. Return an error if the value is not read successfully.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use kvs::KvStore;
-    ///
-    /// let mut store = KvStore::new();
-    /// store.set("name".to_owned(), "zero".to_owned());
-    /// assert_eq!(store.get("name".to_owned()), Some("zero".to_owned()));
-    /// ```
-    ///
-    /// Access an un-existed key should return None.
-    /// ```
-    /// use kvs::KvStore;
-    /// let store = KvStore::new();
-    /// assert_eq!(store.get("name".to_owned()).is_none(), true);
-    /// ```
     pub fn get(self: &KvStore, key: String) -> Result<Option<String>> {
         if !self.index.contains_key(&key) {
             return Ok(None);
@@ -97,17 +73,6 @@ impl KvStore {
     }
 
     /// Remove a given key. Return an error if the key does not exist or is not removed successfully.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use kvs::KvStore;
-    ///
-    /// let mut store = KvStore::new();
-    /// store.set("name".to_owned(), "zero".to_owned());
-    /// store.remove("name".to_owned());
-    /// assert_eq!(store.get("name".to_owned()).is_none(), true);
-    /// ```
     pub fn remove(self: &mut KvStore, key: String) -> Result<()> {
         // check key exists.
         if !self.index.contains_key(&key) {
@@ -127,9 +92,9 @@ impl KvStore {
 
     /// Open the local kvs store from given file.
     pub fn open(path: &Path) -> Result<KvStore> {
-        let file_name = "kvs.db";
-
-        let full_path = path.join(file_name);
+        let folder_path: PathBuf = path.to_owned();
+        let file_name: &str = "kvs.db";
+        let full_path: PathBuf = path.join(file_name);
         let db_file: File = OpenOptions::new()
             .create(true)
             .read(true)
@@ -138,9 +103,46 @@ impl KvStore {
 
         let mut store: KvStore = KvStore {
             db_file,
+            folder_path,
             index: HashMap::new(),
         };
         store.build_indx()?;
         Ok(store)
+    }
+
+    pub fn do_compaction(self: &mut KvStore) -> Result<()> {
+        // for each index, construct relative `set` command.
+        // ??? maybe we should lock the file or index while doing compaction.
+        let mut insts_str: String = String::new();
+        {
+            let file_work: File = self.db_file.try_clone()?;
+            let mut buffer: BufReader<File> = BufReader::new(file_work);
+
+            for (_, offset) in self.index.iter() {
+                // read the relative command.
+                buffer.seek(SeekFrom::Start(*offset))?;
+                buffer.read_line(&mut insts_str)?;
+            }
+        }
+
+        // write the tmp file as backup first
+        let tmp_name: &str = "tmp.db";
+        let tmp_path: PathBuf = self.folder_path.join(tmp_name);
+        let file_name: &str = "kvs.db";
+        let file_path: PathBuf = self.folder_path.join(file_name);
+
+        let tmp: File = OpenOptions::new().create(true).write(true).truncate(true).open(tmp_path)?;
+        let mut write_buffer: BufWriter<File> = BufWriter::new(tmp);
+        write_buffer.write_all(insts_str.as_bytes())?;
+        let tmp_path: PathBuf = self.folder_path.join(tmp_name);
+        fs::rename(tmp_path, file_path)?;
+        Ok(())
+    }
+}
+
+
+impl Drop for KvStore {
+    fn drop(&mut self) {
+        self.do_compaction().expect("Do compaction failed.");
     }
 }
