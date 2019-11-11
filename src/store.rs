@@ -1,9 +1,9 @@
-use std::fs;
 use std::collections::HashMap;
+use std::fs;
 use std::fs::{File, OpenOptions};
-use std::io::{BufRead, BufReader, Seek, SeekFrom, Write, BufWriter};
-use std::path::{Path, PathBuf};
+use std::io::{BufRead, BufReader, BufWriter, Seek, SeekFrom, Write};
 use std::ops::Drop;
+use std::path::{Path, PathBuf};
 
 use crate::command::{Command, Instruction};
 use crate::error::{KvsError, Result};
@@ -55,8 +55,7 @@ impl KvStore {
         }
     }
 
-    fn build_indx(self: &mut KvStore) -> Result<()>
-    {
+    fn build_indx(self: &mut KvStore) -> Result<()> {
         let mut buffer: BufReader<File> = BufReader::new(self.db_file.try_clone()?);
         loop {
             let position_before: u64 = buffer.seek(SeekFrom::Current(0))?;
@@ -131,7 +130,11 @@ impl KvStore {
         let file_name: &str = "kvs.db";
         let file_path: PathBuf = self.folder_path.join(file_name);
 
-        let tmp: File = OpenOptions::new().create(true).write(true).truncate(true).open(tmp_path)?;
+        let tmp: File = OpenOptions::new()
+            .create(true)
+            .write(true)
+            .truncate(true)
+            .open(tmp_path)?;
         let mut write_buffer: BufWriter<File> = BufWriter::new(tmp);
         write_buffer.write_all(insts_str.as_bytes())?;
         let tmp_path: PathBuf = self.folder_path.join(tmp_name);
@@ -139,7 +142,6 @@ impl KvStore {
         Ok(())
     }
 }
-
 
 impl Drop for KvStore {
     fn drop(&mut self) {
