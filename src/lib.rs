@@ -7,6 +7,8 @@
 mod command;
 mod error;
 mod store;
+mod engine;
 
 pub use error::{Repr, Result};
 pub use store::KvStore;
+pub use engine::Engine;

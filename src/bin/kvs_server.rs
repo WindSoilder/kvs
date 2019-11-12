@@ -10,9 +10,13 @@
 //!     Print the version.
 
 use clap::{App, Arg};
-use kvs::Result;
+use kvs::{Engine, Result};
+use log::info;
+use std::str::FromStr;
 
 fn main() -> Result<()> {
+    env_logger::init();
+    info!("Kvs server start up.");
     let app: App = App::new("kvs_server")
         .arg(
             Arg::with_name("addr")
@@ -28,6 +32,13 @@ fn main() -> Result<()> {
                 .value_name("ENGINE-NAME")
                 .takes_value(true),
         );
+
     let matches = app.get_matches();
+    let addr: &str = matches.value_of("addr").unwrap_or("localhost:4000");
+    let engine: Engine = Engine::from_str(matches.value_of("engine").unwrap_or("kvs"))?;
+
+    info!("Listening on {}", addr);
+    info!("Using engine {:?}", engine);
+
     Ok(())
 }

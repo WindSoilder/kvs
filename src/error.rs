@@ -14,6 +14,7 @@ pub enum Repr {
     BinCodeError(BincodeError),
     JsonError(JsonError),
     CommandError(String),
+    StorageEngineError(String),
 }
 
 #[derive(Debug)]
@@ -28,6 +29,7 @@ impl Error for KvsError {
             Repr::BinCodeError(e) => e.source(),
             Repr::JsonError(e) => e.source(),
             Repr::CommandError(_) => None,
+            Repr::StorageEngineError(_) => None,
         }
     }
 }
@@ -65,6 +67,12 @@ impl KvsError {
     pub fn from_string(msg: &str) -> KvsError {
         KvsError {
             repr: Repr::CommandError(msg.to_owned()),
+        }
+    }
+
+    pub fn from_unsupported_engine(msg: &str) -> KvsError {
+        KvsError {
+            repr: Repr::StorageEngineError(String::from(msg)),
         }
     }
 

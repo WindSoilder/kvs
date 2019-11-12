@@ -11,6 +11,8 @@ clap = "2.33.0"
 serde = {version="1.0.100", features=["derive"]}
 bincode = "1.1.4"
 serde_json = "*"
+log = "*"
+env_logger = "*"
 
 [dev-dependencies]
 assert_cmd = "0.11"
