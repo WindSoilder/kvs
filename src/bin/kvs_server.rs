@@ -10,7 +10,7 @@
 //!     Print the version.
 
 use clap::{App, Arg};
-use kvs::{Engine, Result};
+use kvs::{Engine, Result, Server};
 use log::info;
 use std::str::FromStr;
 
@@ -34,11 +34,13 @@ fn main() -> Result<()> {
         );
 
     let matches = app.get_matches();
-    let addr: &str = matches.value_of("addr").unwrap_or("localhost:4000");
+    let addr: &str = matches.value_of("addr").unwrap_or("127.0.0.1:4000");
     let engine: Engine = Engine::from_str(matches.value_of("engine").unwrap_or("kvs"))?;
 
     info!("Listening on {}", addr);
     info!("Using engine {:?}", engine);
 
+    let mut server: Server = Server::new(addr, engine)?;
+    server.serve_forever()?;
     Ok(())
 }

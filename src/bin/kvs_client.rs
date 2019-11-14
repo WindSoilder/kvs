@@ -21,7 +21,8 @@
 //! All error messages should be printed to stderr.
 
 use clap::{App, Arg, SubCommand};
-use kvs::Result;
+use kvs::{Client, Result};
+use std::net::TcpStream;
 
 fn main() -> Result<()> {
     let app: App = App::new(env!("CARGO_PKG_NAME"))
@@ -86,5 +87,21 @@ fn main() -> Result<()> {
                 ),
         );
     let matches = app.get_matches();
+    let default_addr: &str = "127.0.0.1:4000";
+    match matches.subcommand() {
+        ("set", Some(sub_m)) => {
+            let client: Client = Client::new(sub_m.value_of("addr").unwrap_or(default_addr));
+            let stream: TcpStream = client.connect()?;
+        }
+        ("get", Some(sub_m)) => {
+            let client: Client = Client::new(sub_m.value_of("addr").unwrap_or(default_addr));
+            let stream: TcpStream = client.connect()?;
+        }
+        ("rm", Some(sub_m)) => {
+            let client: Client = Client::new(sub_m.value_of("addr").unwrap_or(default_addr));
+            let stream: TcpStream = client.connect()?;
+        }
+        (&_, _) => eprintln!("Command unsupported :("),
+    }
     Ok(())
 }

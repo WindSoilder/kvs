@@ -5,10 +5,13 @@
 //! if found then loads from the log the command at the corresponding log pointer, evaluates the command and returns the result.
 
 mod command;
-mod error;
-mod store;
 mod engine;
+mod error;
+mod network;
+mod store;
 
-pub use error::{Repr, Result};
-pub use store::KvStore;
 pub use engine::Engine;
+pub use error::{Repr, Result};
+pub use network::client::Client;
+pub use network::server::Server;
+pub use store::KvStore;
