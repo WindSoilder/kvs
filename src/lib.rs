@@ -4,7 +4,7 @@
 //! then removes the key from the in-memory index. When retrieving a value for a key with the get command, it searches the index, and
 //! if found then loads from the log the command at the corresponding log pointer, evaluates the command and returns the result.
 
-mod command;
+pub mod command;
 mod engine;
 mod error;
 mod network;
@@ -14,4 +14,5 @@ pub use engine::Engine;
 pub use error::{Repr, Result};
 pub use network::client::Client;
 pub use network::server::Server;
+pub use network::Response;
 pub use store::KvStore;

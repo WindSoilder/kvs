@@ -21,8 +21,10 @@
 //! All error messages should be printed to stderr.
 
 use clap::{App, Arg, SubCommand};
+use kvs::command::Instruction;
+use kvs::Response;
 use kvs::{Client, Result};
-use std::net::TcpStream;
+use std::process;
 
 fn main() -> Result<()> {
     let app: App = App::new(env!("CARGO_PKG_NAME"))
@@ -90,18 +92,52 @@ fn main() -> Result<()> {
     let default_addr: &str = "127.0.0.1:4000";
     match matches.subcommand() {
         ("set", Some(sub_m)) => {
-            let client: Client = Client::new(sub_m.value_of("addr").unwrap_or(default_addr));
-            let stream: TcpStream = client.connect()?;
+            let mut client: Client =
+                Client::connect(sub_m.value_of("addr").unwrap_or(default_addr))?;
+            let instruction: Instruction = Instruction::Set {
+                key: String::from(sub_m.value_of("key").unwrap()),
+                value: String::from(sub_m.value_of("value").unwrap()),
+            };
+
+            client.send_instruction(&instruction)?;
+
+            let response: Response = client.read_response()?;
+            if !response.is_ok() {
+                eprintln!("{}", response.get_message());
+                process::exit(1);
+            }
         }
         ("get", Some(sub_m)) => {
-            let client: Client = Client::new(sub_m.value_of("addr").unwrap_or(default_addr));
-            let stream: TcpStream = client.connect()?;
+            let mut client: Client =
+                Client::connect(sub_m.value_of("addr").unwrap_or(default_addr))?;
+            let instruction: Instruction = Instruction::Get {
+                key: String::from(sub_m.value_of("key").unwrap()),
+            };
+
+            client.send_instruction(&instruction)?;
+
+            let response: Response = client.read_response()?;
+            if response.is_ok() {
+                println!("{}", response.get_body());
+            } else {
+                eprintln!("{}", response.get_message());
+            }
         }
         ("rm", Some(sub_m)) => {
-            let client: Client = Client::new(sub_m.value_of("addr").unwrap_or(default_addr));
-            let stream: TcpStream = client.connect()?;
+            let mut client: Client =
+                Client::connect(sub_m.value_of("addr").unwrap_or(default_addr))?;
+            let instruction: Instruction = Instruction::Rm {
+                key: String::from(sub_m.value_of("key").unwrap()),
+            };
+
+            client.send_instruction(&instruction)?;
+
+            let response: Response = client.read_response()?;
+            if !response.is_ok() {
+                println!("{}", response.get_message());
+            }
         }
-        (&_, _) => eprintln!("Command unsupported :("),
+        (&_, _) => eprintln!("Instruction unsupported :("),
     }
     Ok(())
 }

@@ -5,7 +5,7 @@ use std::io::{BufRead, BufReader, BufWriter, Seek, SeekFrom, Write};
 use std::ops::Drop;
 use std::path::{Path, PathBuf};
 
-use crate::command::{Command, Instruction};
+use crate::command::Instruction;
 use crate::error::{KvsError, Result};
 
 pub struct KvStore {
@@ -17,12 +17,11 @@ pub struct KvStore {
 impl KvStore {
     /// Set the value of a string key to a string. Return an error if the value is not written successfully.
     pub fn set(self: &mut KvStore, key: String, val: String) -> Result<()> {
-        // create a relative instruction object.
-        let command: Command = Command::Set {
+        // create a relative fiinstruction object.
+        let instruction: Instruction = Instruction::Set {
             key: key.clone(),
             value: val,
         };
-        let instruction: Instruction = Instruction::new(command);
         let inst_str: String = serde_json::ser::to_string(&instruction)?;
         // just write serialized data into file
         let offset: u64 = self.db_file.seek(SeekFrom::End(0))?;
@@ -49,8 +48,8 @@ impl KvStore {
         let mut buf: String = String::new();
         reader.read_line(&mut buf)?;
         let instruction: Instruction = serde_json::from_str(&buf)?;
-        match instruction.get_command() {
-            Command::Set { key: _key, value } => Ok(Some(value.clone())),
+        match instruction {
+            Instruction::Set { key: _key, value } => Ok(Some(value.clone())),
             _ => Ok(None),
         }
     }
@@ -61,7 +60,7 @@ impl KvStore {
             let position_before: u64 = buffer.seek(SeekFrom::Current(0))?;
             let mut line_content: String = String::new();
             buffer.read_line(&mut line_content)?;
-            // Command is end.
+            // Instruction is end.
             if line_content.is_empty() {
                 break;
             }
@@ -82,7 +81,7 @@ impl KvStore {
         // The key exists, so it's ok to append a remove command to end of log file.
         let mut file_work: File = self.db_file.try_clone()?;
         file_work.seek(SeekFrom::End(0))?;
-        let instruction: Instruction = Instruction::new(Command::Rm { key });
+        let instruction: Instruction = Instruction::Rm { key };
         let inst_str = serde_json::to_string(&instruction)?;
         self.db_file
             .write_all(format!("{}\n", inst_str).as_bytes())?;
