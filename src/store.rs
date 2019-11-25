@@ -87,7 +87,6 @@ impl KvStore {
 }
 
 impl KvsEngine for KvStore {
-    /// Set the value of a string key to a string. Return an error if the value is not written successfully.
     fn set(self: &mut KvStore, key: String, val: String) -> Result<()> {
         // create a relative fiinstruction object.
         let instruction: Instruction = Instruction::Set {
@@ -105,7 +104,6 @@ impl KvsEngine for KvStore {
         Ok(())
     }
 
-    /// Get the string value of a string key. If the key does not exist, return None. Return an error if the value is not read successfully.
     fn get(self: &KvStore, key: String) -> Result<Option<String>> {
         if !self.index.contains_key(&key) {
             return Ok(None);
@@ -126,7 +124,6 @@ impl KvsEngine for KvStore {
         }
     }
 
-    /// Remove a given key. Return an error if the key does not exist or is not removed successfully.
     fn remove(self: &mut KvStore, key: String) -> Result<()> {
         // check key exists.
         if !self.index.contains_key(&key) {
