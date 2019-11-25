@@ -10,7 +10,7 @@ mod error;
 mod network;
 mod store;
 
-pub use engine::Engine;
+pub use engine::{Engine, KvsEngine};
 pub use error::{Repr, Result};
 pub use network::client::Client;
 pub use network::server::Server;

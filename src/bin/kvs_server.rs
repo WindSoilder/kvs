@@ -10,8 +10,9 @@
 //!     Print the version.
 
 use clap::{App, Arg};
-use kvs::{Engine, Result, Server};
+use kvs::{Engine, KvStore, KvsEngine, Result, Server};
 use log::info;
+use std::path::Path;
 use std::str::FromStr;
 
 fn main() -> Result<()> {
@@ -40,6 +41,7 @@ fn main() -> Result<()> {
     info!("Listening on {}", addr);
     info!("Using engine {:?}", engine);
 
+    let engine: Box<dyn KvsEngine> = Box::new(KvStore::open(Path::new("."))?);
     let mut server: Server = Server::new(addr, engine)?;
     server.serve_forever()?;
     Ok(())

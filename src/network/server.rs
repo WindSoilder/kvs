@@ -1,28 +1,24 @@
 use super::Response;
 use crate::command::Instruction;
-use crate::engine::Engine;
+use crate::engine::{Engine, KvsEngine};
 use crate::error::Result;
-use crate::store::KvStore;
 use log::{debug, error};
 use std::io::prelude::*;
 use std::net::{TcpListener, TcpStream, ToSocketAddrs};
-use std::path::Path;
 
 pub struct Server {
     listener: TcpListener,
-    engine: Engine,
-    store: KvStore,
+    store: Box<dyn KvsEngine>,
 }
 
 impl Server {
-    pub fn new<T>(addr: T, engine: Engine) -> Result<Server>
+    pub fn new<T>(addr: T, engine: Box<dyn KvsEngine>) -> Result<Server>
     where
         T: ToSocketAddrs,
     {
         Ok(Server {
             listener: TcpListener::bind(addr)?,
-            engine,
-            store: KvStore::open(Path::new("."))?,
+            store: engine,
         })
     }
 
@@ -43,7 +39,10 @@ impl Server {
         Ok(())
     }
 
-    pub fn handle_client(mut client_stream: TcpStream, store: &mut KvStore) -> Result<()> {
+    pub fn handle_client(
+        mut client_stream: TcpStream,
+        store: &mut Box<dyn KvsEngine>,
+    ) -> Result<()> {
         let peer_addr = client_stream.peer_addr()?;
         debug!("Waiting data from {}", peer_addr);
 
@@ -72,17 +71,17 @@ impl Server {
         Ok(())
     }
 
-    fn execute_instruction(instruction: Instruction, store: &mut KvStore) -> Response {
+    fn execute_instruction(instruction: Instruction, store: &mut Box<dyn KvsEngine>) -> Response {
         match instruction {
             Instruction::Set { key, value } => {
-                let result = store.set(key, value);
+                let result = (*store).set(key, value);
                 match result {
                     Ok(_) => Response::new_ok(),
                     Err(e) => Response::new_err(e.to_string()),
                 }
             }
             Instruction::Get { key } => {
-                let result = store.get(key);
+                let result = (*store).get(key);
                 match result {
                     Ok(Some(s)) => Response::new_ok_with_body(s),
                     Ok(None) => Response::new_err(String::from("Key not found")),
@@ -90,7 +89,7 @@ impl Server {
                 }
             }
             Instruction::Rm { key } => {
-                let result = store.remove(key);
+                let result = (*store).remove(key);
                 match result {
                     Ok(_) => Response::new_ok(),
                     Err(e) => Response::new_err(e.to_string()),

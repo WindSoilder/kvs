@@ -23,3 +23,11 @@ impl FromStr for Engine {
         }
     }
 }
+
+pub trait KvsEngine {
+    fn set(&mut self, key: String, val: String) -> Result<()>;
+
+    fn get(&self, key: String) -> Result<Option<String>>;
+
+    fn remove(&mut self, key: String) -> Result<()>;
+}

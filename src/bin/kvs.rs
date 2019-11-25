@@ -1,5 +1,5 @@
 use clap::{App, Arg, SubCommand};
-use kvs::{KvStore, Repr, Result};
+use kvs::{KvStore, Repr, Result, KvsEngine};
 
 use std::path::Path;
 use std::process;
