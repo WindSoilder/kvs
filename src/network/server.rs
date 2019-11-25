@@ -1,6 +1,6 @@
 use super::Response;
 use crate::command::Instruction;
-use crate::engine::{Engine, KvsEngine};
+use crate::engine::KvsEngine;
 use crate::error::Result;
 use log::{debug, error};
 use std::io::prelude::*;
@@ -8,7 +8,7 @@ use std::net::{TcpListener, TcpStream, ToSocketAddrs};
 
 pub struct Server {
     listener: TcpListener,
-    store: Box<dyn KvsEngine>,
+    engine: Box<dyn KvsEngine>,
 }
 
 impl Server {
@@ -18,7 +18,7 @@ impl Server {
     {
         Ok(Server {
             listener: TcpListener::bind(addr)?,
-            store: engine,
+            engine: engine,
         })
     }
 
@@ -31,7 +31,7 @@ impl Server {
                         "New connection established from {}",
                         client_stream.peer_addr()?
                     );
-                    Self::handle_client(client_stream, &mut self.store)?;
+                    Self::handle_client(client_stream, &mut self.engine)?;
                 }
                 Err(e) => error!("Connection failed, reason: {:?}", e),
             }
@@ -41,7 +41,7 @@ impl Server {
 
     pub fn handle_client(
         mut client_stream: TcpStream,
-        store: &mut Box<dyn KvsEngine>,
+        engine: &mut Box<dyn KvsEngine>,
     ) -> Result<()> {
         let peer_addr = client_stream.peer_addr()?;
         debug!("Waiting data from {}", peer_addr);
@@ -61,7 +61,7 @@ impl Server {
                 let instruction: Instruction = serde_json::from_str(&user_command)?;
                 debug!("Peer: {}, Instruction: {:?}", peer_addr, instruction);
                 // handle for user request.
-                let response: Response = Self::execute_instruction(instruction, store);
+                let response: Response = Self::execute_instruction(instruction, engine);
                 // TODO: here we need to check serde_json result..  What if it goes into fail..
                 let bytes: Vec<u8> = serde_json::to_vec(&response)?;
                 client_stream.write(&bytes)?;
@@ -71,17 +71,17 @@ impl Server {
         Ok(())
     }
 
-    fn execute_instruction(instruction: Instruction, store: &mut Box<dyn KvsEngine>) -> Response {
+    fn execute_instruction(instruction: Instruction, engine: &mut Box<dyn KvsEngine>) -> Response {
         match instruction {
             Instruction::Set { key, value } => {
-                let result = (*store).set(key, value);
+                let result = (*engine).set(key, value);
                 match result {
                     Ok(_) => Response::new_ok(),
                     Err(e) => Response::new_err(e.to_string()),
                 }
             }
             Instruction::Get { key } => {
-                let result = (*store).get(key);
+                let result = (*engine).get(key);
                 match result {
                     Ok(Some(s)) => Response::new_ok_with_body(s),
                     Ok(None) => Response::new_err(String::from("Key not found")),
@@ -89,7 +89,7 @@ impl Server {
                 }
             }
             Instruction::Rm { key } => {
-                let result = (*store).remove(key);
+                let result = (*engine).remove(key);
                 match result {
                     Ok(_) => Response::new_ok(),
                     Err(e) => Response::new_err(e.to_string()),
