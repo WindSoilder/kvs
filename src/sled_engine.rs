@@ -2,8 +2,7 @@
 use crate::engine::KvsEngine;
 use crate::{KvsError, Result};
 use sled::Db;
-use sled::IVec;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::str;
 
 pub struct SledKvsEngine {
@@ -12,8 +11,10 @@ pub struct SledKvsEngine {
 
 impl SledKvsEngine {
     pub fn open(path: &Path) -> Result<SledKvsEngine> {
+        let file_name: &str = "sled.db";
+        let full_path: PathBuf = path.join(file_name);
         Ok(SledKvsEngine {
-            inner: Db::open(path)?,
+            inner: Db::open(full_path)?,
         })
     }
 }
@@ -37,7 +38,7 @@ impl KvsEngine for SledKvsEngine {
 
     fn remove(&mut self, key: String) -> Result<()> {
         let result = self.inner.remove(key.as_bytes())?;
-        if let Some(value) = result {
+        if let Some(_) = result {
             Ok(())
         } else {
             Err(KvsError::from_string("Key not found"))
