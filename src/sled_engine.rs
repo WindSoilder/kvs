@@ -11,7 +11,7 @@ pub struct SledKvsEngine {
 }
 
 impl SledKvsEngine {
-    fn open(path: &Path) -> Result<SledKvsEngine> {
+    pub fn open(path: &Path) -> Result<SledKvsEngine> {
         Ok(SledKvsEngine {
             inner: Db::open(path)?,
         })
