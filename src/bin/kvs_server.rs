@@ -10,7 +10,7 @@
 //!     Print the version.
 
 use clap::{App, Arg};
-use kvs::{Engine, KvStore, KvsEngine, Result, Server};
+use kvs::{Engine, KvStore, KvsEngine, Result, Server, SledKvsEngine};
 use log::info;
 use std::path::Path;
 use std::str::FromStr;
@@ -37,12 +37,15 @@ fn main() -> Result<()> {
     let matches = app.get_matches();
     let addr: &str = matches.value_of("addr").unwrap_or("127.0.0.1:4000");
     let engine: Engine = Engine::from_str(matches.value_of("engine").unwrap_or("kvs"))?;
+    let kvs_engine: Box<dyn KvsEngine> = match engine {
+        Engine::Kvs => Box::new(KvStore::open(Path::new("."))?),
+        Engine::Sled => Box::new(SledKvsEngine::open(Path::new("."))?),
+    };
 
     info!("Listening on {}", addr);
     info!("Using engine {:?}", engine);
 
-    let engine: Box<dyn KvsEngine> = Box::new(KvStore::open(Path::new("."))?);
-    let mut server: Server = Server::new(addr, engine)?;
+    let mut server: Server = Server::new(addr, kvs_engine)?;
     server.serve_forever()?;
     Ok(())
 }
