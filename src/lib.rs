@@ -9,10 +9,12 @@ mod engine;
 mod error;
 mod network;
 mod store;
+mod sled_engine;
 
 pub use engine::{Engine, KvsEngine};
-pub use error::{Repr, Result};
+pub use error::{Repr, Result, KvsError};
 pub use network::client::Client;
 pub use network::server::Server;
 pub use network::Response;
 pub use store::KvStore;
+pub use sled_engine::SledKvsEngine;
