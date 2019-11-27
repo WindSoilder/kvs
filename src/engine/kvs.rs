@@ -5,9 +5,9 @@ use std::io::{BufRead, BufReader, BufWriter, Seek, SeekFrom, Write};
 use std::ops::Drop;
 use std::path::{Path, PathBuf};
 
+use super::KvsEngine;
 use crate::command::Instruction;
 use crate::error::{KvsError, Result};
-use crate::KvsEngine;
 
 pub struct KvStore {
     db_file: File,

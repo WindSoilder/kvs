@@ -1,5 +1,5 @@
 //! Sled kvs engine.
-use crate::engine::KvsEngine;
+use super::KvsEngine;
 use crate::{KvsError, Result};
 use sled::Db;
 use std::path::{Path, PathBuf};

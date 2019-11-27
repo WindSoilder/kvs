@@ -1,28 +1,4 @@
-use crate::error::{KvsError, Result};
-use std::str::FromStr;
-
-#[derive(Debug)]
-pub enum Engine {
-    /// Our own kvs storage engine.
-    Kvs,
-    /// Sled storage engine.
-    Sled,
-}
-
-impl FromStr for Engine {
-    type Err = KvsError;
-
-    fn from_str(s: &str) -> Result<Self> {
-        match s {
-            "kvs" => Ok(Engine::Kvs),
-            "sled" => Ok(Engine::Sled),
-            _ => Err(KvsError::from_unsupported_engine(&format!(
-                "Unsupported engine {}",
-                s
-            ))),
-        }
-    }
-}
+use crate::Result;
 
 pub trait KvsEngine {
     /// Set the value of a string key to a string.
@@ -43,3 +19,9 @@ pub trait KvsEngine {
     /// An error should occured when the key does not exist or it's not remove successfully.
     fn remove(&mut self, key: String) -> Result<()>;
 }
+
+mod kvs;
+mod sled;
+
+pub use self::kvs::KvStore;
+pub use self::sled::SledKvsEngine;
