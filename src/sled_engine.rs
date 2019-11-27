@@ -34,8 +34,7 @@ impl KvsEngine for SledKvsEngine {
     fn get(&self, key: String) -> Result<Option<String>> {
         let result = self.inner.get(key.as_bytes())?;
         if let Some(value) = result {
-            // ??? 1. why this can work.
-            // ??? 2. how IVec implement to_vec method.
+            // NOTE: sled::IVec implement Deref<target=[u8]>, so sled::IVec can invoke to_vec method.
             return Ok(Some(String::from_utf8(value.to_vec())?));
         } else {
             Err(KvsError::from_string("Key not found"))
