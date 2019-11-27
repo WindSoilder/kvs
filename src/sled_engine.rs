@@ -11,17 +11,23 @@ pub struct SledKvsEngine {
 
 impl SledKvsEngine {
     pub fn open(path: &Path) -> Result<SledKvsEngine> {
-        let file_name: &str = "sled.db";
-        let full_path: PathBuf = path.join(file_name);
         Ok(SledKvsEngine {
-            inner: Db::open(full_path)?,
+            inner: Db::open(path)?,
         })
+    }
+
+    pub fn db_exists(path: &Path) -> bool {
+        let file_name: &str = "db";
+        let full_path: PathBuf = path.join(file_name);
+        full_path.exists()
     }
 }
 
 impl KvsEngine for SledKvsEngine {
     fn set(&mut self, key: String, val: String) -> Result<()> {
         self.inner.insert(key.as_bytes(), val.as_bytes())?;
+        // This maybe not efficient.
+        self.inner.flush()?;
         Ok(())
     }
 
@@ -38,6 +44,8 @@ impl KvsEngine for SledKvsEngine {
 
     fn remove(&mut self, key: String) -> Result<()> {
         let result = self.inner.remove(key.as_bytes())?;
+        // This maybe not efficient.
+        self.inner.flush()?;
         if let Some(_) = result {
             Ok(())
         } else {

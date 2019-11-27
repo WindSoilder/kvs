@@ -90,6 +90,7 @@ fn main() -> Result<()> {
         );
     let matches = app.get_matches();
     let default_addr: &str = "127.0.0.1:4000";
+
     match matches.subcommand() {
         ("set", Some(sub_m)) => {
             let mut client: Client =
@@ -120,7 +121,7 @@ fn main() -> Result<()> {
             if response.is_ok() {
                 println!("{}", response.get_body());
             } else {
-                eprintln!("{}", response.get_message());
+                println!("{}", response.get_message());
             }
         }
         ("rm", Some(sub_m)) => {
@@ -134,10 +135,14 @@ fn main() -> Result<()> {
 
             let response: Response = client.read_response()?;
             if !response.is_ok() {
-                println!("{}", response.get_message());
+                eprintln!("{}", response.get_message());
+                process::exit(1);
             }
         }
-        (&_, _) => eprintln!("Instruction unsupported :("),
+        (&_, _) => {
+            eprintln!("You need to provide commands, for now the supported commands are `set`, `get`, `rm`");
+            process::exit(1);
+        }
     }
     Ok(())
 }

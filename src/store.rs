@@ -84,6 +84,14 @@ impl KvStore {
         store.build_indx()?;
         Ok(store)
     }
+
+    /// Check if the db file exists in for the given folder.
+    pub fn db_exists(path: &Path) -> bool {
+        let file_name: &str = "kvs.db";
+        let full_path: PathBuf = path.join(file_name);
+
+        full_path.exists()
+    }
 }
 
 impl KvsEngine for KvStore {
@@ -100,6 +108,7 @@ impl KvsEngine for KvStore {
         self.index.insert(key, offset);
         self.db_file
             .write_all(format!("{}\n", inst_str).as_bytes())?;
+        // NOTE: do_compaction here is not efficient.
         self.do_compaction()?;
         Ok(())
     }
@@ -138,12 +147,15 @@ impl KvsEngine for KvStore {
         let inst_str = serde_json::to_string(&instruction)?;
         self.db_file
             .write_all(format!("{}\n", inst_str).as_bytes())?;
+        // NOTE: do_compaction here is not efficient.
+        self.do_compaction()?;
         Ok(())
     }
 }
 
 impl Drop for KvStore {
     fn drop(&mut self) {
+        println!("Do compaction here???");
         self.do_compaction().expect("Do compaction failed.");
     }
 }

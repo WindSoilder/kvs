@@ -10,15 +10,25 @@
 //!     Print the version.
 
 use clap::{App, Arg};
+use env_logger::Target;
 use kvs::{Engine, KvStore, KvsEngine, Result, Server, SledKvsEngine};
 use log::info;
+use log::LevelFilter;
 use std::path::Path;
+use std::process;
 use std::str::FromStr;
 
 fn main() -> Result<()> {
-    env_logger::init();
-    info!("Kvs server start up.");
+    env_logger::builder()
+        .filter_level(LevelFilter::Debug)
+        .target(Target::Stderr)
+        .init();
+    info!(
+        "Kvs server start up, version is: {}",
+        env!("CARGO_PKG_VERSION")
+    );
     let app: App = App::new("kvs_server")
+        .version(env!("CARGO_PKG_VERSION"))
         .arg(
             Arg::with_name("addr")
                 .help("address to listen")
@@ -37,6 +47,23 @@ fn main() -> Result<()> {
     let matches = app.get_matches();
     let addr: &str = matches.value_of("addr").unwrap_or("127.0.0.1:4000");
     let engine: Engine = Engine::from_str(matches.value_of("engine").unwrap_or("kvs"))?;
+
+    // other engine already running?
+    match engine {
+        Engine::Kvs => {
+            if SledKvsEngine::db_exists(Path::new(".")) {
+                eprintln!("Kvs engine already run in the current folder.");
+                process::exit(1);
+            }
+        }
+        Engine::Sled => {
+            if KvStore::db_exists(Path::new(".")) {
+                eprintln!("Sled engine already run in the current folder.");
+                process::exit(1);
+            }
+        }
+    };
+
     let kvs_engine: Box<dyn KvsEngine> = match engine {
         Engine::Kvs => Box::new(KvStore::open(Path::new("."))?),
         Engine::Sled => Box::new(SledKvsEngine::open(Path::new("."))?),
