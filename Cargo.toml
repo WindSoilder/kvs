@@ -30,3 +30,8 @@ path = "src/bin/kvs_client.rs"
 [[bin]]
 name = "kvs-server"
 path = "src/bin/kvs_server.rs"
+
+[[bench]]
+name = "my_benchmark"
+path = "src/benches/my_benchmark.rs"
+harness = false
