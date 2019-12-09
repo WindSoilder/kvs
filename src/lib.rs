@@ -32,6 +32,7 @@ pub mod command;
 mod engine;
 mod error;
 mod network;
+pub mod thread_pool;
 
 pub use engine::{KvStore, KvsEngine, SledKvsEngine};
 pub use error::{KvsError, Repr, Result};
