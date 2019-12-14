@@ -2,23 +2,26 @@ use super::Response;
 use crate::command::Instruction;
 use crate::engine::KvsEngine;
 use crate::error::Result;
+use crate::thread_pool::ThreadPool;
 use log::{debug, error};
 use std::io::prelude::*;
 use std::net::{TcpListener, TcpStream, ToSocketAddrs};
 
-pub struct Server<E: KvsEngine> {
+pub struct Server<E: KvsEngine, P: ThreadPool> {
     listener: TcpListener,
     engine: E,
+    thread_pool: P,
 }
 
-impl<E: KvsEngine> Server<E> {
-    pub fn new<T>(addr: T, engine: E) -> Result<Server<E>>
+impl<E: KvsEngine, P: ThreadPool> Server<E, P> {
+    pub fn new<T>(addr: T, engine: E, thread_pool: P) -> Result<Server<E, P>>
     where
         T: ToSocketAddrs,
     {
         Ok(Server {
             listener: TcpListener::bind(addr)?,
-            engine: engine,
+            engine,
+            thread_pool,
         })
     }
 
@@ -31,7 +34,10 @@ impl<E: KvsEngine> Server<E> {
                         "New connection established from {}",
                         client_stream.peer_addr()?
                     );
-                    Self::handle_client(client_stream, &mut self.engine)?;
+                    let engine_work = self.engine.clone();
+                    self.thread_pool.spawn(move || {
+                        Self::handle_client(client_stream, &engine_work).unwrap();
+                    })
                 }
                 Err(e) => error!("Connection failed, reason: {:?}", e),
             }

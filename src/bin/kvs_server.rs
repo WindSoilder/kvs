@@ -11,6 +11,7 @@
 
 use clap::{App, Arg};
 use env_logger::Target;
+use kvs::thread_pool::{self, NaiveThreadPool, ThreadPool};
 use kvs::{Engine, KvStore, Result, Server, SledKvsEngine};
 use log::info;
 use log::LevelFilter;
@@ -48,6 +49,7 @@ fn main() -> Result<()> {
     let addr: &str = matches.value_of("addr").unwrap_or("127.0.0.1:4000");
     let engine: Engine = Engine::from_str(matches.value_of("engine").unwrap_or("kvs"))?;
 
+    let pool = thread_pool::NaiveThreadPool::new(10)?;
     // other engine already running?
     match engine {
         Engine::Kvs => {
@@ -69,12 +71,13 @@ fn main() -> Result<()> {
 
     match engine {
         Engine::Kvs => {
-            let mut server: Server<KvStore> = Server::new(addr, KvStore::open(Path::new("."))?)?;
+            let mut server: Server<KvStore, NaiveThreadPool> =
+                Server::new(addr, KvStore::open(Path::new("."))?, pool)?;
             server.serve_forever()?;
         }
         Engine::Sled => {
-            let mut server: Server<SledKvsEngine> =
-                Server::new(addr, SledKvsEngine::open(Path::new("."))?)?;
+            let mut server: Server<SledKvsEngine, NaiveThreadPool> =
+                Server::new(addr, SledKvsEngine::open(Path::new("."))?, pool)?;
             server.serve_forever()?;
         }
     }
