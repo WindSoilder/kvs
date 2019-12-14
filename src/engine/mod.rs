@@ -1,11 +1,11 @@
 use crate::Result;
 
-pub trait KvsEngine {
+pub trait KvsEngine: Clone + Send + 'static {
     /// Set the value of a string key to a string.
     ///
     /// # Errors
     /// This method should return an error if the value is not written successfully.
-    fn set(&mut self, key: String, val: String) -> Result<()>;
+    fn set(&self, key: String, val: String) -> Result<()>;
 
     /// Get the string value of a string key.
     ///
@@ -17,7 +17,7 @@ pub trait KvsEngine {
     ///
     /// # Errors
     /// An error should occured when the key does not exist or it's not remove successfully.
-    fn remove(&mut self, key: String) -> Result<()>;
+    fn remove(&self, key: String) -> Result<()>;
 }
 
 mod kvs;

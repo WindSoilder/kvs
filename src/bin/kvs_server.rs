@@ -11,7 +11,7 @@
 
 use clap::{App, Arg};
 use env_logger::Target;
-use kvs::{Engine, KvStore, KvsEngine, Result, Server, SledKvsEngine};
+use kvs::{Engine, KvStore, Result, Server, SledKvsEngine};
 use log::info;
 use log::LevelFilter;
 use std::path::Path;
@@ -64,15 +64,19 @@ fn main() -> Result<()> {
         }
     };
 
-    let kvs_engine: Box<dyn KvsEngine> = match engine {
-        Engine::Kvs => Box::new(KvStore::open(Path::new("."))?),
-        Engine::Sled => Box::new(SledKvsEngine::open(Path::new("."))?),
-    };
-
     info!("Listening on {}", addr);
     info!("Using engine {:?}", engine);
 
-    let mut server: Server = Server::new(addr, kvs_engine)?;
-    server.serve_forever()?;
+    match engine {
+        Engine::Kvs => {
+            let mut server: Server<KvStore> = Server::new(addr, KvStore::open(Path::new("."))?)?;
+            server.serve_forever()?;
+        }
+        Engine::Sled => {
+            let mut server: Server<SledKvsEngine> =
+                Server::new(addr, SledKvsEngine::open(Path::new("."))?)?;
+            server.serve_forever()?;
+        }
+    }
     Ok(())
 }

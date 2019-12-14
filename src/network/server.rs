@@ -6,13 +6,13 @@ use log::{debug, error};
 use std::io::prelude::*;
 use std::net::{TcpListener, TcpStream, ToSocketAddrs};
 
-pub struct Server {
+pub struct Server<E: KvsEngine> {
     listener: TcpListener,
-    engine: Box<dyn KvsEngine>,
+    engine: E,
 }
 
-impl Server {
-    pub fn new<T>(addr: T, engine: Box<dyn KvsEngine>) -> Result<Server>
+impl<E: KvsEngine> Server<E> {
+    pub fn new<T>(addr: T, engine: E) -> Result<Server<E>>
     where
         T: ToSocketAddrs,
     {
@@ -39,10 +39,7 @@ impl Server {
         Ok(())
     }
 
-    pub fn handle_client(
-        mut client_stream: TcpStream,
-        engine: &mut Box<dyn KvsEngine>,
-    ) -> Result<()> {
+    pub fn handle_client(mut client_stream: TcpStream, engine: &impl KvsEngine) -> Result<()> {
         let peer_addr = client_stream.peer_addr()?;
         debug!("Waiting data from {}", peer_addr);
 
@@ -71,17 +68,17 @@ impl Server {
         Ok(())
     }
 
-    fn execute_instruction(instruction: Instruction, engine: &mut Box<dyn KvsEngine>) -> Response {
+    fn execute_instruction(instruction: Instruction, engine: &impl KvsEngine) -> Response {
         match instruction {
             Instruction::Set { key, value } => {
-                let result = (*engine).set(key, value);
+                let result = engine.set(key, value);
                 match result {
                     Ok(_) => Response::new_ok(),
                     Err(e) => Response::new_err(e.to_string()),
                 }
             }
             Instruction::Get { key } => {
-                let result = (*engine).get(key);
+                let result = engine.get(key);
                 match result {
                     Ok(Some(s)) => Response::new_ok_with_body(s),
                     Ok(None) => Response::new_err(String::from("Key not found")),
@@ -89,7 +86,7 @@ impl Server {
                 }
             }
             Instruction::Rm { key } => {
-                let result = (*engine).remove(key);
+                let result = engine.remove(key);
                 match result {
                     Ok(_) => Response::new_ok(),
                     Err(e) => Response::new_err(e.to_string()),

@@ -4,19 +4,24 @@ use std::fs::{File, OpenOptions};
 use std::io::{BufRead, BufReader, BufWriter, Seek, SeekFrom, Write};
 use std::ops::Drop;
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex, MutexGuard};
 
 use super::KvsEngine;
 use crate::command::Instruction;
 use crate::error::{KvsError, Result};
 
-pub struct KvStore {
+struct InnerStore {
     db_file: File,
     folder_path: PathBuf,
     index: HashMap<String, u64>,
 }
 
-impl KvStore {
-    pub fn do_compaction(self: &mut KvStore) -> Result<()> {
+pub struct KvStore {
+    inner: Arc<Mutex<InnerStore>>,
+}
+
+impl InnerStore {
+    pub fn do_compaction(self: &mut InnerStore) -> Result<()> {
         // for each index, construct relative `set` command.
         // ??? maybe we should lock the file or index while doing compaction.
         let mut insts_str: String = String::new();
@@ -49,7 +54,7 @@ impl KvStore {
         Ok(())
     }
 
-    fn build_indx(self: &mut KvStore) -> Result<()> {
+    pub fn build_indx(self: &mut InnerStore) -> Result<()> {
         let mut buffer: BufReader<File> = BufReader::new(self.db_file.try_clone()?);
         loop {
             let position_before: u64 = buffer.seek(SeekFrom::Current(0))?;
@@ -64,7 +69,9 @@ impl KvStore {
         }
         Ok(())
     }
+}
 
+impl KvStore {
     /// Open the local kvs store from given file.
     pub fn open(path: &Path) -> Result<KvStore> {
         let folder_path: PathBuf = path.to_owned();
@@ -76,13 +83,15 @@ impl KvStore {
             .write(true)
             .open(full_path)?;
 
-        let mut store: KvStore = KvStore {
+        let mut inner = InnerStore {
             db_file,
             folder_path,
             index: HashMap::new(),
         };
-        store.build_indx()?;
-        Ok(store)
+        inner.build_indx()?;
+        Ok(KvStore {
+            inner: Arc::new(Mutex::new(inner)),
+        })
     }
 
     /// Check if the db file exists in for the given folder.
@@ -95,7 +104,9 @@ impl KvStore {
 }
 
 impl KvsEngine for KvStore {
-    fn set(self: &mut KvStore, key: String, val: String) -> Result<()> {
+    fn set(self: &KvStore, key: String, val: String) -> Result<()> {
+        let mut inner: MutexGuard<InnerStore> = self.inner.lock().expect("Lock KvsEngine failed.");
+
         // create a relative fiinstruction object.
         let instruction: Instruction = Instruction::Set {
             key: key.clone(),
@@ -103,26 +114,28 @@ impl KvsEngine for KvStore {
         };
         let inst_str: String = serde_json::ser::to_string(&instruction)?;
         // just write serialized data into file
-        let offset: u64 = self.db_file.seek(SeekFrom::End(0))?;
+        let offset: u64 = inner.db_file.seek(SeekFrom::End(0))?;
         // write the current offset to inner index.
-        self.index.insert(key, offset);
-        self.db_file
+        inner.index.insert(key, offset);
+        inner
+            .db_file
             .write_all(format!("{}\n", inst_str).as_bytes())?;
         // NOTE: do_compaction here is not efficient.
-        self.do_compaction()?;
+        inner.do_compaction()?;
         Ok(())
     }
 
     fn get(self: &KvStore, key: String) -> Result<Option<String>> {
-        if !self.index.contains_key(&key) {
+        let inner: MutexGuard<InnerStore> = self.inner.lock().expect("Lock KvsEngine failed.");
+        if !inner.index.contains_key(&key) {
             return Ok(None);
         }
         // access the key to get relative file pointer index.
-        let file: File = self.db_file.try_clone()?;
+        let file: File = inner.db_file.try_clone()?;
         let mut reader: BufReader<File> = BufReader::new(file);
 
         // load command from file and run it.
-        let pointer = self.index.get(&key).unwrap();
+        let pointer = inner.index.get(&key).unwrap();
         reader.seek(SeekFrom::Start(*pointer))?;
         let mut buf: String = String::new();
         reader.read_line(&mut buf)?;
@@ -133,29 +146,40 @@ impl KvsEngine for KvStore {
         }
     }
 
-    fn remove(self: &mut KvStore, key: String) -> Result<()> {
+    fn remove(self: &KvStore, key: String) -> Result<()> {
+        let mut inner: MutexGuard<InnerStore> = self.inner.lock().expect("Lock KvsEngine failed.");
+
         // check key exists.
-        if !self.index.contains_key(&key) {
+        if !inner.index.contains_key(&key) {
             return Err(KvsError::from_string("Key not found"));
         }
         // Remember to remove key from inner index.
-        self.index.remove(&key);
+        inner.index.remove(&key);
         // The key exists, so it's ok to append a remove command to end of log file.
-        let mut file_work: File = self.db_file.try_clone()?;
+        let mut file_work: File = inner.db_file.try_clone()?;
         file_work.seek(SeekFrom::End(0))?;
         let instruction: Instruction = Instruction::Rm { key };
         let inst_str = serde_json::to_string(&instruction)?;
-        self.db_file
+        inner
+            .db_file
             .write_all(format!("{}\n", inst_str).as_bytes())?;
         // NOTE: do_compaction here is not efficient.
-        self.do_compaction()?;
+        inner.do_compaction()?;
         Ok(())
     }
 }
 
-impl Drop for KvStore {
+impl Drop for InnerStore {
     fn drop(&mut self) {
         println!("Do compaction here???");
         self.do_compaction().expect("Do compaction failed.");
+    }
+}
+
+impl Clone for KvStore {
+    fn clone(&self) -> Self {
+        KvStore {
+            inner: self.inner.clone(),
+        }
     }
 }
