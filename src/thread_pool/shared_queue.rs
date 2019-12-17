@@ -34,7 +34,7 @@ impl<'a> Drop for Sentinel<'a> {
 }
 
 struct SharedData {
-    receiver: Arc<Mutex<Receiver<Message>>>,
+    receiver: Mutex<Receiver<Message>>,
 }
 
 enum Message {
@@ -53,7 +53,7 @@ impl ThreadPool for SharedQueueThreadPool {
         // Create a channal, sender will send job from pool to sub thread.
         // Receiver will receive and execute job.
         let (sender, receiver): (Sender<Message>, Receiver<Message>) = mpsc::channel();
-        let receiver: Arc<Mutex<Receiver<Message>>> = Arc::new(Mutex::new(receiver));
+        let receiver: Mutex<Receiver<Message>> = Mutex::new(receiver);
         let shared_data = Arc::new(SharedData { receiver });
 
         for _ in 0..max_threads {
