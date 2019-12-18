@@ -4,7 +4,7 @@ mod shared_queue;
 use crate::error::Result;
 
 pub use naive::NaiveThreadPool;
-pub use rayon::RayonThreadPool;
+pub use self::rayon::RayonThreadPool;
 pub use shared_queue::SharedQueueThreadPool;
 
 pub trait ThreadPool {
