@@ -5,7 +5,7 @@ use std::thread;
 pub struct NaiveThreadPool;
 
 impl ThreadPool for NaiveThreadPool {
-    fn new(max_threads: usize) -> Result<NaiveThreadPool> {
+    fn new(_max_threads: usize) -> Result<NaiveThreadPool> {
         Ok(NaiveThreadPool)
     }
 

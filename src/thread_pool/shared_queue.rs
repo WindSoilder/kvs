@@ -25,10 +25,8 @@ impl<'a> Sentinel<'a> {
 
 impl<'a> Drop for Sentinel<'a> {
     fn drop(&mut self) {
-        if self.active {
-            if thread::panicking() {
-                create_thread_in_pool(self.shared_data.clone())
-            }
+        if self.active && thread::panicking() {
+            create_thread_in_pool(self.shared_data.clone())
         }
     }
 }

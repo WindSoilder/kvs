@@ -67,7 +67,7 @@ impl<E: KvsEngine, P: ThreadPool> Server<E, P> {
                 let response: Response = Self::execute_instruction(instruction, engine);
                 // TODO: here we need to check serde_json result..  What if it goes into fail..
                 let bytes: Vec<u8> = serde_json::to_vec(&response)?;
-                client_stream.write(&bytes)?;
+                client_stream.write_all(&bytes)?;
                 debug!("Solve complete for peer: {}", peer_addr);
             }
         }
@@ -88,7 +88,7 @@ impl<E: KvsEngine, P: ThreadPool> Server<E, P> {
                 match result {
                     Ok(Some(s)) => Response::new_ok_with_body(s),
                     Ok(None) => Response::new_err(String::from("Key not found")),
-                    Err(e) => Response::new_err(String::from(e.to_string())),
+                    Err(e) => Response::new_err(e.to_string()),
                 }
             }
             Instruction::Rm { key } => {

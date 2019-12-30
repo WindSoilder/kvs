@@ -21,7 +21,7 @@ impl InnerSledEngine {
         let result = self.inner.remove(key.as_bytes())?;
         // This maybe not efficient.
         self.inner.flush()?;
-        if let Some(_) = result {
+        if result.is_some() {
             Ok(())
         } else {
             Err(KvsError::from_string("Key not found"))
@@ -32,7 +32,7 @@ impl InnerSledEngine {
         let result = self.inner.get(key.as_bytes())?;
         if let Some(value) = result {
             // NOTE: sled::IVec implement Deref<target=[u8]>, so sled::IVec can invoke to_vec method.
-            return Ok(Some(String::from_utf8(value.to_vec())?));
+            Ok(Some(String::from_utf8(value.to_vec())?))
         } else {
             Err(KvsError::from_string("Key not found"))
         }

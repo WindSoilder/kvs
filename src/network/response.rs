@@ -38,13 +38,13 @@ impl Response {
         Response {
             status: Status::OK,
             message: String::from(""),
-            body: body,
+            body,
         }
     }
     pub fn new_err(message: String) -> Response {
         Response {
             status: Status::ERROR,
-            message: message,
+            message,
             body: String::from(""),
         }
     }

@@ -17,7 +17,7 @@ impl Client {
 
     pub fn send_instruction(&mut self, inst: &Instruction) -> Result<()> {
         let out: String = serde_json::to_string(inst)?;
-        self.inner.write(out.as_bytes())?;
+        self.inner.write_all(out.as_bytes())?;
         Ok(())
     }
 
