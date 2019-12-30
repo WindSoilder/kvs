@@ -9,13 +9,13 @@ use std::thread;
 type Job = Box<dyn FnOnce() + Send + 'static>;
 
 struct Sentinel<'a> {
-    pool: &'a Arc<SharedData>,
+    shared_data: &'a Arc<SharedData>,
     active: bool,
 }
 
 impl<'a> Sentinel<'a> {
-    pub fn new(pool: &Arc<SharedData>) -> Sentinel {
-        Sentinel { pool, active: true }
+    pub fn new(shared_data: &Arc<SharedData>) -> Sentinel {
+        Sentinel { shared_data, active: true }
     }
 
     pub fn cancel(&mut self) {
@@ -27,7 +27,7 @@ impl<'a> Drop for Sentinel<'a> {
     fn drop(&mut self) {
         if self.active {
             if thread::panicking() {
-                create_thread_in_pool(self.pool.clone())
+                create_thread_in_pool(self.shared_data.clone())
             }
         }
     }
@@ -45,7 +45,7 @@ enum Message {
 pub struct SharedQueueThreadPool {
     sender: Sender<Message>,
     max_threads: usize,
-    shared_data: Arc<SharedData>,
+    _shared_data: Arc<SharedData>,
 }
 
 impl ThreadPool for SharedQueueThreadPool {
@@ -63,7 +63,7 @@ impl ThreadPool for SharedQueueThreadPool {
         Ok(SharedQueueThreadPool {
             sender,
             max_threads,
-            shared_data,
+            _shared_data: shared_data,
         })
     }
 
