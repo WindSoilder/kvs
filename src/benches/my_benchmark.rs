@@ -62,7 +62,7 @@ pub fn sled_write_benchmark(c: &mut Criterion) {
     let random_keys: Vec<String> = generate_random_strings(&mut rng, 100, 100000);
     let random_values: Vec<String> = generate_random_strings(&mut rng, 100, 100000);
 
-    c.bench_function("kvs write", move |b| {
+    c.bench_function("sled write", move |b| {
         b.iter(|| {
             let indx: usize = (rng.next_u32() % 100) as usize;
             engine
@@ -84,7 +84,7 @@ pub fn sled_read_benchmark(c: &mut Criterion) {
         engine.set(key.clone(), value.clone()).unwrap()
     }
 
-    c.bench_function("kvs read", move |b| {
+    c.bench_function("sled read", move |b| {
         b.iter(|| {
             let indx: usize = (rng.next_u32() % 100) as usize;
             engine.get(random_keys[indx].clone()).unwrap();
