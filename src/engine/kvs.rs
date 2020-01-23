@@ -10,11 +10,23 @@ use super::KvsEngine;
 use crate::command::Instruction;
 use crate::error::{KvsError, Result};
 
+// when useless command in the file match this threshold, a compaction
+// action is required.
+static THRESHOLD: usize = 10240;
+
+// Note the reason for storing reader, writer fields in the InnerStore rather than a `File` struct.
+// The logical separation of readers and writers into their own concurrent types is a common in Rust. Readers have their
+// own data set to work with, and writers their own, and that provides a good opportunity for encapsulation, with all
+// read operations beloning to one type and all write operations another.
+//
+// Making this distinction will further make it very obvious which resources are accessed by both, since the reader and
+// writer will both carry shared handles to those resources.
 struct InnerStore {
     reader: BufReaderSeekable<File>,
     writer: BufWriterSeekable<File>,
     folder_path: PathBuf,
     index: HashMap<String, u64>,
+    useless_cmd: usize,
 }
 
 pub struct KvStore {
@@ -23,6 +35,9 @@ pub struct KvStore {
 
 impl InnerStore {
     pub fn do_compaction(self: &mut InnerStore) -> Result<()> {
+        if self.useless_cmd < THRESHOLD {
+            return Ok(());
+        }
         // for each index, construct relative `set` command.
         // ??? maybe we should lock the file or index while doing compaction.
         let mut insts_str: String = String::new();
@@ -94,6 +109,7 @@ impl KvStore {
                 writer: db_writer,
                 folder_path: path,
                 index: indx,
+                useless_cmd: 0,
             })),
         })
     }
@@ -120,7 +136,9 @@ impl KvsEngine for KvStore {
         // just write serialized data into file
         let offset: u64 = inner.writer.seek(SeekFrom::End(0))?;
         // write the current offset to inner index.
-        inner.index.insert(key, offset);
+        if let Some(_) = inner.index.insert(key, offset) {
+            inner.useless_cmd += 1;
+        }
         inner
             .writer
             .write_all(format!("{}\n", inst_str).as_bytes())?;
@@ -156,7 +174,9 @@ impl KvsEngine for KvStore {
             return Err(KvsError::from_string("Key not found"));
         }
         // Remember to remove key from inner index.
-        inner.index.remove(&key);
+        if let Some(_) = inner.index.remove(&key) {
+            inner.useless_cmd += 1;
+        }
         inner.writer.seek(SeekFrom::End(0))?;
         let instruction: Instruction = Instruction::Rm { key };
         let inst_str = serde_json::to_string(&instruction)?;
