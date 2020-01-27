@@ -184,7 +184,6 @@ impl KvsEngine for KvStore {
             .writer
             .write_all(format!("{}\n", inst_str).as_bytes())?;
         inner.writer.flush()?;
-        // NOTE: do_compaction here is not efficient.
         inner.do_compaction()?;
         Ok(())
     }
