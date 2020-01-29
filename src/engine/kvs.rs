@@ -1,10 +1,8 @@
 use std::collections::HashMap;
-use std::fs;
 use std::fs::{File, OpenOptions};
 use std::io::{BufRead, BufReader, BufWriter, Seek, SeekFrom, Write};
-use std::ops::Drop;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex, MutexGuard};
+use std::sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use super::KvsEngine;
 use crate::command::Instruction;
@@ -17,7 +15,7 @@ struct InnerStore {
 }
 
 pub struct KvStore {
-    inner: Arc<Mutex<InnerStore>>,
+    inner: Arc<RwLock<InnerStore>>,
 }
 
 impl InnerStore {
@@ -26,7 +24,9 @@ impl InnerStore {
         // ??? maybe we should lock the file or index while doing compaction.
         let mut insts_str: String = String::new();
         {
-            let file_work: File = self.db_file.try_clone()?;
+            let file_work: File = OpenOptions::new()
+                .read(true)
+                .open(self.folder_path.join("kvs.db"))?;
             let mut buffer: BufReader<File> = BufReader::new(file_work);
 
             for (_, offset) in self.index.iter() {
@@ -36,26 +36,25 @@ impl InnerStore {
             }
         }
 
-        // write the tmp file as backup first
-        let tmp_name: &str = "tmp.db";
-        let tmp_path: PathBuf = self.folder_path.join(tmp_name);
-        let file_name: &str = "kvs.db";
-        let file_path: PathBuf = self.folder_path.join(file_name);
-
-        let tmp: File = OpenOptions::new()
-            .create(true)
+        let new_file: File = OpenOptions::new()
             .write(true)
             .truncate(true)
-            .open(tmp_path)?;
-        let mut write_buffer: BufWriter<File> = BufWriter::new(tmp);
+            .open(self.folder_path.join("kvs.db"))?;
+        let mut write_buffer: BufWriter<File> = BufWriter::new(new_file);
         write_buffer.write_all(insts_str.as_bytes())?;
-        let tmp_path: PathBuf = self.folder_path.join(tmp_name);
-        fs::rename(tmp_path, file_path)?;
+        write_buffer.flush()?;
+        // remember to rebuild index.
+        self.build_indx()?;
         Ok(())
     }
 
     pub fn build_indx(self: &mut InnerStore) -> Result<()> {
-        let mut buffer: BufReader<File> = BufReader::new(self.db_file.try_clone()?);
+        let mut buffer: BufReader<File> = BufReader::new(
+            OpenOptions::new()
+                .read(true)
+                .open(self.folder_path.join("kvs.db"))?,
+        );
+        //let mut buffer: BufReader<File> = BufReader::new(self.db_file.try_clone()?);
         loop {
             let position_before: u64 = buffer.seek(SeekFrom::Current(0))?;
             let mut line_content: String = String::new();
@@ -90,7 +89,7 @@ impl KvStore {
         };
         inner.build_indx()?;
         Ok(KvStore {
-            inner: Arc::new(Mutex::new(inner)),
+            inner: Arc::new(RwLock::new(inner)),
         })
     }
 
@@ -105,7 +104,8 @@ impl KvStore {
 
 impl KvsEngine for KvStore {
     fn set(self: &KvStore, key: String, val: String) -> Result<()> {
-        let mut inner: MutexGuard<InnerStore> = self.inner.lock().expect("Lock KvsEngine failed.");
+        let mut inner: RwLockWriteGuard<InnerStore> =
+            self.inner.write().expect("Lock KvsEngine failed.");
 
         // create a relative fiinstruction object.
         let instruction: Instruction = Instruction::Set {
@@ -120,18 +120,22 @@ impl KvsEngine for KvStore {
         inner
             .db_file
             .write_all(format!("{}\n", inst_str).as_bytes())?;
+        inner.db_file.flush()?;
         // NOTE: do_compaction here is not efficient.
         inner.do_compaction()?;
         Ok(())
     }
 
     fn get(self: &KvStore, key: String) -> Result<Option<String>> {
-        let inner: MutexGuard<InnerStore> = self.inner.lock().expect("Lock KvsEngine failed.");
+        let inner: RwLockReadGuard<InnerStore> = self.inner.read().expect("Lock KvsEngine failed.");
         if !inner.index.contains_key(&key) {
             return Ok(None);
         }
         // access the key to get relative file pointer index.
-        let file: File = inner.db_file.try_clone()?;
+        // let file: File = inner.db_file.try_clone()?;
+        let file: File = OpenOptions::new()
+            .read(true)
+            .open(inner.folder_path.join("kvs.db"))?;
         let mut reader: BufReader<File> = BufReader::new(file);
 
         // load command from file and run it.
@@ -147,7 +151,8 @@ impl KvsEngine for KvStore {
     }
 
     fn remove(self: &KvStore, key: String) -> Result<()> {
-        let mut inner: MutexGuard<InnerStore> = self.inner.lock().expect("Lock KvsEngine failed.");
+        let mut inner: RwLockWriteGuard<InnerStore> =
+            self.inner.write().expect("Lock KvsEngine failed.");
 
         // check key exists.
         if !inner.index.contains_key(&key) {
@@ -156,23 +161,22 @@ impl KvsEngine for KvStore {
         // Remember to remove key from inner index.
         inner.index.remove(&key);
         // The key exists, so it's ok to append a remove command to end of log file.
-        let mut file_work: File = inner.db_file.try_clone()?;
+        // let mut file_work: File = inner.db_file.try_clone()?;
+        let mut file_work: File = OpenOptions::new()
+            .write(true)
+            .append(true)
+            .open(inner.folder_path.join("kvs.db"))?;
+
         file_work.seek(SeekFrom::End(0))?;
         let instruction: Instruction = Instruction::Rm { key };
         let inst_str = serde_json::to_string(&instruction)?;
         inner
             .db_file
             .write_all(format!("{}\n", inst_str).as_bytes())?;
+        inner.db_file.flush()?;
         // NOTE: do_compaction here is not efficient.
         inner.do_compaction()?;
         Ok(())
-    }
-}
-
-impl Drop for InnerStore {
-    fn drop(&mut self) {
-        println!("Do compaction here???");
-        self.do_compaction().expect("Do compaction failed.");
     }
 }
 
