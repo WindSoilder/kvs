@@ -9,9 +9,9 @@ use crate::command::Instruction;
 use crate::error::{KvsError, Result};
 
 const THRESHOLD: usize = 4096;
+const DB_FILE_NAME: &str = "kvs.db";
 
 struct InnerStore {
-    db_file: File,
     folder_path: PathBuf,
     index: HashMap<String, u64>,
     useless_cmd: usize,
@@ -27,12 +27,9 @@ impl InnerStore {
             return Ok(());
         }
         // for each index, construct relative `set` command.
-        // ??? maybe we should lock the file or index while doing compaction.
         let mut insts_str: String = String::new();
         {
-            let file_work: File = OpenOptions::new()
-                .read(true)
-                .open(self.folder_path.join("kvs.db"))?;
+            let file_work: File = File::open(self.folder_path.join(DB_FILE_NAME))?;
             let mut buffer: BufReader<File> = BufReader::new(file_work);
 
             for (_, offset) in self.index.iter() {
@@ -45,7 +42,7 @@ impl InnerStore {
         let new_file: File = OpenOptions::new()
             .write(true)
             .truncate(true)
-            .open(self.folder_path.join("kvs.db"))?;
+            .open(self.folder_path.join(DB_FILE_NAME))?;
         let mut write_buffer: BufWriter<File> = BufWriter::new(new_file);
         write_buffer.write_all(insts_str.as_bytes())?;
         write_buffer.flush()?;
@@ -58,9 +55,8 @@ impl InnerStore {
         let mut buffer: BufReader<File> = BufReader::new(
             OpenOptions::new()
                 .read(true)
-                .open(self.folder_path.join("kvs.db"))?,
+                .open(self.folder_path.join(DB_FILE_NAME))?,
         );
-        //let mut buffer: BufReader<File> = BufReader::new(self.db_file.try_clone()?);
         loop {
             let position_before: u64 = buffer.seek(SeekFrom::Current(0))?;
             let mut line_content: String = String::new();
@@ -80,16 +76,13 @@ impl KvStore {
     /// Open the local kvs store from given file.
     pub fn open(path: &Path) -> Result<KvStore> {
         let folder_path: PathBuf = path.to_owned();
-        let file_name: &str = "kvs.db";
-        let full_path: PathBuf = path.join(file_name);
-        let db_file: File = OpenOptions::new()
+        // create db file if it's not existed.
+        OpenOptions::new()
             .create(true)
-            .read(true)
             .write(true)
-            .open(full_path)?;
+            .open(path.join(DB_FILE_NAME))?;
 
         let mut inner = InnerStore {
-            db_file,
             folder_path,
             index: HashMap::new(),
             useless_cmd: 0,
@@ -102,7 +95,7 @@ impl KvStore {
 
     /// Check if the db file exists in for the given folder.
     pub fn db_exists(path: &Path) -> bool {
-        let file_name: &str = "kvs.db";
+        let file_name: &str = DB_FILE_NAME;
         let full_path: PathBuf = path.join(file_name);
 
         full_path.exists()
@@ -121,16 +114,17 @@ impl KvsEngine for KvStore {
         };
         let inst_str: String = serde_json::ser::to_string(&instruction)?;
         // just write serialized data into file
-        let offset: u64 = inner.db_file.seek(SeekFrom::End(0))?;
+        let mut file_work: File = OpenOptions::new()
+            .write(true)
+            .create(true)
+            .append(true)
+            .open(inner.folder_path.join(DB_FILE_NAME))?;
         // write the current offset to inner index.
-        if let Some(_) = inner.index.insert(key, offset) {
+        if let Some(_) = inner.index.insert(key, file_work.seek(SeekFrom::End(0))?) {
             inner.useless_cmd += 1;
         }
-        inner
-            .db_file
-            .write_all(format!("{}\n", inst_str).as_bytes())?;
-        inner.db_file.flush()?;
-        // NOTE: do_compaction here is not efficient.
+        file_work.write_all(format!("{}\n", inst_str).as_bytes())?;
+        file_work.flush()?;
         inner.do_compaction()?;
         Ok(())
     }
@@ -141,10 +135,9 @@ impl KvsEngine for KvStore {
             return Ok(None);
         }
         // access the key to get relative file pointer index.
-        // let file: File = inner.db_file.try_clone()?;
         let file: File = OpenOptions::new()
             .read(true)
-            .open(inner.folder_path.join("kvs.db"))?;
+            .open(inner.folder_path.join(DB_FILE_NAME))?;
         let mut reader: BufReader<File> = BufReader::new(file);
 
         // load command from file and run it.
@@ -172,20 +165,15 @@ impl KvsEngine for KvStore {
             inner.useless_cmd += 1;
         }
         // The key exists, so it's ok to append a remove command to end of log file.
-        // let mut file_work: File = inner.db_file.try_clone()?;
         let mut file_work: File = OpenOptions::new()
             .write(true)
             .append(true)
-            .open(inner.folder_path.join("kvs.db"))?;
+            .open(inner.folder_path.join(DB_FILE_NAME))?;
 
-        file_work.seek(SeekFrom::End(0))?;
         let instruction: Instruction = Instruction::Rm { key };
         let inst_str = serde_json::to_string(&instruction)?;
-        inner
-            .db_file
-            .write_all(format!("{}\n", inst_str).as_bytes())?;
-        inner.db_file.flush()?;
-        // NOTE: do_compaction here is not efficient.
+        file_work.write_all(format!("{}\n", inst_str).as_bytes())?;
+        file_work.flush()?;
         inner.do_compaction()?;
         Ok(())
     }
