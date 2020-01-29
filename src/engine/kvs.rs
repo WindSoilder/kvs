@@ -8,10 +8,13 @@ use super::KvsEngine;
 use crate::command::Instruction;
 use crate::error::{KvsError, Result};
 
+const THRESHOLD: usize = 4096;
+
 struct InnerStore {
     db_file: File,
     folder_path: PathBuf,
     index: HashMap<String, u64>,
+    useless_cmd: usize,
 }
 
 pub struct KvStore {
@@ -20,6 +23,9 @@ pub struct KvStore {
 
 impl InnerStore {
     pub fn do_compaction(self: &mut InnerStore) -> Result<()> {
+        if self.useless_cmd < THRESHOLD {
+            return Ok(());
+        }
         // for each index, construct relative `set` command.
         // ??? maybe we should lock the file or index while doing compaction.
         let mut insts_str: String = String::new();
@@ -86,6 +92,7 @@ impl KvStore {
             db_file,
             folder_path,
             index: HashMap::new(),
+            useless_cmd: 0,
         };
         inner.build_indx()?;
         Ok(KvStore {
@@ -116,7 +123,9 @@ impl KvsEngine for KvStore {
         // just write serialized data into file
         let offset: u64 = inner.db_file.seek(SeekFrom::End(0))?;
         // write the current offset to inner index.
-        inner.index.insert(key, offset);
+        if let Some(_) = inner.index.insert(key, offset) {
+            inner.useless_cmd += 1;
+        }
         inner
             .db_file
             .write_all(format!("{}\n", inst_str).as_bytes())?;
@@ -159,7 +168,9 @@ impl KvsEngine for KvStore {
             return Err(KvsError::from_string("Key not found"));
         }
         // Remember to remove key from inner index.
-        inner.index.remove(&key);
+        if let Some(_) = inner.index.remove(&key) {
+            inner.useless_cmd += 1;
+        }
         // The key exists, so it's ok to append a remove command to end of log file.
         // let mut file_work: File = inner.db_file.try_clone()?;
         let mut file_work: File = OpenOptions::new()
