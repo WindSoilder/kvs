@@ -74,8 +74,8 @@ impl InnerStore {
 
 impl KvStore {
     /// Open the local kvs store from given file.
-    pub fn open(path: &Path) -> Result<KvStore> {
-        let folder_path: PathBuf = path.to_owned();
+    pub fn open<T: AsRef<Path>>(path: T) -> Result<KvStore> {
+        let path: &Path = path.as_ref();
         // create db file if it's not existed.
         OpenOptions::new()
             .create(true)
@@ -83,7 +83,7 @@ impl KvStore {
             .open(path.join(DB_FILE_NAME))?;
 
         let mut inner = InnerStore {
-            folder_path,
+            folder_path: path.to_owned(),
             index: HashMap::new(),
             useless_cmd: 0,
         };
